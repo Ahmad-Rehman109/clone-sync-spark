@@ -30,11 +30,11 @@ serve(async (req) => {
     console.log('Incoming Authorization header present:', !!authHeader);
 
     // Get user
-    const authHeader2 = authHeader; // reuse
-    console.log('Authorization header starts with "Bearer":', authHeader2.startsWith('Bearer '));
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : authHeader.trim();
+    console.log('Authorization header starts with "Bearer":', authHeader.startsWith('Bearer '), 'token length:', token.length);
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
     if (userError) console.error('getUser error:', userError);
-    if (!user) console.error('No user from getUser. Header starts with:', authHeader2.slice(0, 20));
+    if (!user) console.error('No user from getUser. Header prefix:', authHeader.slice(0, 20));
     if (userError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,

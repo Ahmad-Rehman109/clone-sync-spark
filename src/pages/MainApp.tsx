@@ -112,6 +112,18 @@ const App = () => {
 // Replace the generateReplies function in MainApp.tsx with this:
 
 const generateReplies = async () => {
+
+
+   const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  console.log('Current session:', session);
+  console.log('Session error:', sessionError);
+  console.log('User:', user);
+  
+  if (!session) {
+    toast.error("Not logged in!");
+    navigate('/auth');
+    return;
+  }
   // Validate messages
   const validMessages = messages.filter(m => m.text.trim());
   if (validMessages.length === 0) {

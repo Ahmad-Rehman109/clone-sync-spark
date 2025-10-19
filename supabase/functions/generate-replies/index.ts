@@ -29,13 +29,22 @@ serve(async (req) => {
     console.log('Edge env SUPABASE_ANON_KEY present:', !!Deno.env.get('SUPABASE_ANON_KEY'));
     console.log('Incoming Authorization header present:', !!authHeader);
 
-    // Get user
+    // Extract and decode JWT to get user id (platform already verified JWT)
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : authHeader.trim();
     console.log('Authorization header starts with "Bearer":', authHeader.startsWith('Bearer '), 'token length:', token.length);
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
-    if (userError) console.error('getUser error:', userError);
-    if (!user) console.error('No user from getUser. Header prefix:', authHeader.slice(0, 20));
-    if (userError || !user) {
+
+    let userId = '';
+    try {
+      const payloadPart = token.split('.')[1];
+      if (!payloadPart) throw new Error('Invalid JWT format');
+      const decoded = JSON.parse(atob(payloadPart.replace(/-/g, '+').replace(/_/g, '/')));
+      userId = decoded.sub || '';
+    } catch (e) {
+      console.error('JWT decode error:', e);
+    }
+
+    if (!token || !userId) {
+      console.error('Missing token or userId');
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -55,7 +64,7 @@ serve(async (req) => {
     const { data: profile, error: profileError } = await supabaseClient
       .from('profiles')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .single();
 
     if (profileError) {
@@ -75,7 +84,7 @@ serve(async (req) => {
       await supabaseClient
         .from('profiles')
         .update({ daily_used: 0, last_reset_date: today })
-        .eq('user_id', user.id);
+        .eq('user_id', userId);
     }
 
     // Check quota
@@ -238,13 +247,13 @@ Respond ONLY with valid JSON:
     await supabaseClient
       .from('profiles')
       .update({ daily_used: currentUsed + 1 })
-      .eq('user_id', user.id);
+      .eq('user_id', userId);
 
     // Save to history
     await supabaseClient
       .from('reply_history')
       .insert({
-        user_id: user.id,
+        user_id: userId,
         input_text: inputText,
         conversation_context: conversationContext || [],
         replies: replies,

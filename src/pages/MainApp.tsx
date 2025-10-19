@@ -109,6 +109,8 @@ const App = () => {
 
   // Find the generateReplies function in src/pages/MainApp.tsx and replace it with this:
 
+// Replace the generateReplies function in MainApp.tsx with this:
+
 const generateReplies = async () => {
   // Validate messages
   const validMessages = messages.filter(m => m.text.trim());
@@ -137,20 +139,30 @@ const generateReplies = async () => {
   setLoading(true);
 
   try {
-    // Only send last 5 messages for context
-    const contextMessages = validMessages.slice(-5);
+    // Get the current session token
+    const { data: { session } } = await supabase.auth.getSession();
     
-    console.log('Sending request with context:', contextMessages.length, 'messages');
+    if (!session) {
+      toast.error("Session expired. Please sign in again.");
+      navigate('/auth');
+      return;
+    }
+
+    console.log('Sending request with', validMessages.length, 'messages');
     
+    // Call the edge function with proper auth headers
     const { data, error } = await supabase.functions.invoke('generate-replies', {
       body: {
-        conversationContext: contextMessages,
+        conversationContext: validMessages.slice(-5), // Only last 5
         inputText: lastMessage.text,
+      },
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
       },
     });
 
     if (error) {
-      console.error('Supabase function error:', error);
+      console.error('Edge function error:', error);
       throw error;
     }
 
@@ -180,15 +192,13 @@ const generateReplies = async () => {
     // User-friendly error messages
     const errorMessage = error.message || 'Unknown error';
     
-    if (errorMessage.includes('429') || errorMessage.includes('Rate limit')) {
+    if (errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
+      toast.error("Session expired. Please sign in again.");
+      navigate('/auth');
+    } else if (errorMessage.includes('429') || errorMessage.includes('Rate limit')) {
       toast.error("Too many requests. Please wait a moment and try again.");
     } else if (errorMessage.includes('quota')) {
       toast.error("Daily quota exceeded. Upgrade for unlimited!");
-    } else if (errorMessage.includes('Unauthorized') || errorMessage.includes('401')) {
-      toast.error("Session expired. Please sign in again.");
-      navigate('/auth');
-    } else if (errorMessage.includes('API key') || errorMessage.includes('not configured')) {
-      toast.error("Service configuration error. Please contact support.");
     } else if (errorMessage.includes('Network') || errorMessage.includes('fetch')) {
       toast.error("Network error. Please check your connection and try again.");
     } else {

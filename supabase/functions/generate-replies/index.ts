@@ -118,27 +118,27 @@ Respond ONLY with valid JSON:
   ]
 }`;
 
-    // Call Groq API
-    const GROQ_API_KEY = Deno.env.get('GROQ_API_KEY');
-    if (!GROQ_API_KEY) {
-      console.error('GROQ_API_KEY not configured');
+    // Call Lovable AI
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    if (!LOVABLE_API_KEY) {
+      console.error('LOVABLE_API_KEY not configured');
       return new Response(JSON.stringify({ 
-        error: 'AI service not configured. Add GROQ_API_KEY to GitHub Secrets.'
+        error: 'AI service not configured.'
       }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.log('Calling Groq AI...');
-    const aiResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    console.log('Calling Lovable AI...');
+    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${GROQ_API_KEY}`,
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: 'google/gemini-2.5-flash',
         messages: [
           {
             role: 'system',
@@ -157,7 +157,7 @@ Respond ONLY with valid JSON:
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
-      console.error('Groq API error:', aiResponse.status, errorText);
+      console.error('Lovable AI error:', aiResponse.status, errorText);
       
       if (aiResponse.status === 429) {
         return new Response(JSON.stringify({ error: 'Rate limit exceeded. Try again in a moment.' }), {
@@ -167,8 +167,15 @@ Respond ONLY with valid JSON:
       }
       
       if (aiResponse.status === 401) {
-        return new Response(JSON.stringify({ error: 'Invalid GROQ_API_KEY.' }), {
+        return new Response(JSON.stringify({ error: 'Invalid LOVABLE_API_KEY.' }), {
           status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      
+      if (aiResponse.status === 402) {
+        return new Response(JSON.stringify({ error: 'Payment required. Please add credits to your Lovable AI workspace.' }), {
+          status: 402,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
@@ -180,7 +187,7 @@ Respond ONLY with valid JSON:
     }
 
     const aiData = await aiResponse.json();
-    console.log('Groq AI response received');
+    console.log('Lovable AI response received');
     
     // Parse response
     let replies;

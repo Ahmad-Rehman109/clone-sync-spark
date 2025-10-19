@@ -23,8 +23,18 @@ serve(async (req) => {
       { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
     );
 
+    // Debug auth/env
+    console.log('Edge env SUPABASE_URL present:', !!Deno.env.get('SUPABASE_URL'));
+    console.log('Edge env SUPABASE_ANON_KEY present:', !!Deno.env.get('SUPABASE_ANON_KEY'));
+    console.log('Incoming Authorization header present:', !!req.headers.get('Authorization'));
+
+
     // Get user
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    const authHeader = req.headers.get('Authorization') || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
+    if (userError) console.error('getUser error:', userError);
+    if (!user) console.error('No user from getUser. Header starts with:', authHeader?.slice(0, 20));
     if (userError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,

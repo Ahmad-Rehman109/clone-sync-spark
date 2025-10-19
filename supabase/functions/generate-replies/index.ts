@@ -17,24 +17,24 @@ serve(async (req) => {
   }
 
   try {
+    const authHeader = req.headers.get('Authorization') || '';
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+      { global: { headers: { Authorization: authHeader } } }
     );
 
     // Debug auth/env
     console.log('Edge env SUPABASE_URL present:', !!Deno.env.get('SUPABASE_URL'));
     console.log('Edge env SUPABASE_ANON_KEY present:', !!Deno.env.get('SUPABASE_ANON_KEY'));
-    console.log('Incoming Authorization header present:', !!req.headers.get('Authorization'));
-
+    console.log('Incoming Authorization header present:', !!authHeader);
 
     // Get user
-    const authHeader = req.headers.get('Authorization') || '';
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
+    const authHeader2 = authHeader; // reuse
+    console.log('Authorization header starts with "Bearer":', authHeader2.startsWith('Bearer '));
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
     if (userError) console.error('getUser error:', userError);
-    if (!user) console.error('No user from getUser. Header starts with:', authHeader?.slice(0, 20));
+    if (!user) console.error('No user from getUser. Header starts with:', authHeader2.slice(0, 20));
     if (userError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,

@@ -1,16 +1,27 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 const Auth = () => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    // Check if user is already logged in
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        navigate("/app");
+      }
+    });
+  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,13 +40,33 @@ const Auth = () => {
       return;
     }
 
-    // TODO: Implement actual auth logic with Supabase
-    setTimeout(() => {
-      toast.success(isSignUp ? "Account created!" : "Signed in successfully!");
+    try {
+      if (isSignUp) {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/app`,
+          },
+        });
+        if (error) throw error;
+        toast.success("Account created! Welcome to ReplyMe!");
+        navigate("/app");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) throw error;
+        toast.success("Signed in successfully!");
+        navigate("/app");
+      }
+    } catch (error: any) {
+      console.error("Auth error:", error);
+      toast.error(error.message || "Authentication failed");
+    } finally {
       setLoading(false);
-      // Navigate to /app
-      window.location.href = "/app";
-    }, 1000);
+    }
   };
 
   return (

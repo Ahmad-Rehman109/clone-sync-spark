@@ -1,14 +1,28 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useEffect, useState } from "react";
 
 const Settings = () => {
-  const handleSignOut = () => {
+  const navigate = useNavigate();
+  const [userEmail, setUserEmail] = useState("");
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        setUserEmail(user.email || "");
+      }
+    });
+  }, []);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
     toast.success("Signed out successfully");
-    window.location.href = "/";
+    navigate("/");
   };
 
   const handleClearHistory = () => {
@@ -56,7 +70,7 @@ const Settings = () => {
           
           <div className="space-y-2">
             <Label className="text-muted-foreground">Email</Label>
-            <p className="font-medium">user@example.com</p>
+            <p className="font-medium">{userEmail}</p>
           </div>
 
           <Button

@@ -1,10 +1,11 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, History, Settings, Sparkles, Plus, X, Copy, Share, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 type Speaker = "them" | "me";
 
@@ -18,17 +19,55 @@ interface Reply {
   tone: string;
   text: string;
   explain: string;
-  color: string;
+  color?: string;
 }
 
 const App = () => {
+  const navigate = useNavigate();
+  const [user, setUser] = useState<any>(null);
+  const [profile, setProfile] = useState<any>(null);
   const [messages, setMessages] = useState<Message[]>([
     { id: "1", speaker: "them", text: "" }
   ]);
   const [replies, setReplies] = useState<Reply[]>([]);
   const [loading, setLoading] = useState(false);
-  const [dailyUsed] = useState(5);
-  const dailyQuota = 10;
+
+  useEffect(() => {
+    // Check authentication
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        navigate("/auth");
+      } else {
+        setUser(session.user);
+        loadProfile(session.user.id);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        navigate("/auth");
+      } else {
+        setUser(session.user);
+        loadProfile(session.user.id);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  const loadProfile = async (userId: string) => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (error) {
+      console.error('Error loading profile:', error);
+    } else {
+      setProfile(data);
+    }
+  };
 
   const addMessage = () => {
     if (messages.length >= 10) {
@@ -75,38 +114,49 @@ const App = () => {
       return;
     }
 
-    if (dailyUsed >= dailyQuota) {
+    if (!profile) {
+      toast.error("Please wait, loading profile...");
+      return;
+    }
+
+    if (profile.plan === 'free' && profile.daily_used >= profile.daily_quota) {
       toast.error("Daily quota reached. Upgrade for unlimited!");
       return;
     }
 
     setLoading(true);
 
-    // Mock AI responses for now
-    setTimeout(() => {
-      setReplies([
-        {
-          tone: "Funny",
-          text: "Only if you're bringing snacks 🍿😄",
-          explain: "Light-hearted and playful, uses emojis to keep things casual and fun",
-          color: "tone-funny"
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-replies', {
+        body: {
+          conversationContext: validMessages,
+          inputText: validMessages[validMessages.length - 1].text,
         },
-        {
-          tone: "Bold",
-          text: "I could make some time. What did you have in mind?",
-          explain: "Confident and direct, shows interest without being too eager",
-          color: "tone-bold"
-        },
-        {
-          tone: "Mature",
-          text: "Let me check my schedule and get back to you by tonight!",
-          explain: "Thoughtful and responsible, sets clear expectations while being friendly",
-          color: "tone-mature"
-        }
-      ]);
+      });
+
+      if (error) throw error;
+
+      if (data?.replies) {
+        setReplies(data.replies.map((r: Reply, i: number) => ({
+          ...r,
+          color: i === 0 ? 'tone-funny' : i === 1 ? 'tone-bold' : 'tone-mature'
+        })));
+        toast.success("Replies generated!");
+        // Reload profile to update quota
+        if (user) loadProfile(user.id);
+      }
+    } catch (error: any) {
+      console.error("Error generating replies:", error);
+      if (error.message?.includes('429')) {
+        toast.error("Rate limit exceeded. Please try again later.");
+      } else if (error.message?.includes('quota')) {
+        toast.error("Daily quota exceeded. Upgrade for unlimited!");
+      } else {
+        toast.error("Failed to generate replies. Please try again.");
+      }
+    } finally {
       setLoading(false);
-      toast.success("Replies generated!");
-    }, 2000);
+    }
   };
 
   const copyReply = (text: string) => {
@@ -239,18 +289,18 @@ const App = () => {
         <div className="backdrop-blur-lg bg-card/50 border border-border rounded-2xl p-6 space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">
-              {dailyUsed}/{dailyQuota} free today
+              {profile ? `${profile.daily_used}/${profile.daily_quota}` : "0/10"} free today
             </span>
             <span className="text-sm text-muted-foreground">
               {totalChars}/1000 characters
             </span>
           </div>
 
-          <Progress value={(dailyUsed / dailyQuota) * 100} />
+          <Progress value={profile ? (profile.daily_used / profile.daily_quota) * 100 : 0} />
 
           <Button
             onClick={generateReplies}
-            disabled={loading || dailyUsed >= dailyQuota}
+            disabled={loading || !profile || profile.daily_used >= profile.daily_quota}
             className="w-full h-12 text-lg"
           >
             {loading ? (

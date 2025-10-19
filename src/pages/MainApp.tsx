@@ -107,57 +107,97 @@ const App = () => {
 
   const totalChars = messages.reduce((sum, m) => sum + m.text.length, 0);
 
-  const generateReplies = async () => {
-    const validMessages = messages.filter(m => m.text.trim());
-    if (validMessages.length === 0) {
-      toast.error("Please add at least one message");
-      return;
+  // Find the generateReplies function in src/pages/MainApp.tsx and replace it with this:
+
+const generateReplies = async () => {
+  // Validate messages
+  const validMessages = messages.filter(m => m.text.trim());
+  if (validMessages.length === 0) {
+    toast.error("Please add at least one message");
+    return;
+  }
+
+  // Check if last message is from "them"
+  const lastMessage = validMessages[validMessages.length - 1];
+  if (lastMessage.speaker !== 'them') {
+    toast.error("The last message should be from 'them' to generate a reply");
+    return;
+  }
+
+  if (!profile) {
+    toast.error("Please wait, loading profile...");
+    return;
+  }
+
+  if (profile.plan === 'free' && profile.daily_used >= profile.daily_quota) {
+    toast.error("Daily quota reached. Upgrade for unlimited!");
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    // Only send last 5 messages for context
+    const contextMessages = validMessages.slice(-5);
+    
+    console.log('Sending request with context:', contextMessages.length, 'messages');
+    
+    const { data, error } = await supabase.functions.invoke('generate-replies', {
+      body: {
+        conversationContext: contextMessages,
+        inputText: lastMessage.text,
+      },
+    });
+
+    if (error) {
+      console.error('Supabase function error:', error);
+      throw error;
     }
 
-    if (!profile) {
-      toast.error("Please wait, loading profile...");
-      return;
+    if (!data) {
+      throw new Error('No data received from server');
     }
 
-    if (profile.plan === 'free' && profile.daily_used >= profile.daily_quota) {
-      toast.error("Daily quota reached. Upgrade for unlimited!");
-      return;
+    if (data.error) {
+      throw new Error(data.error);
     }
 
-    setLoading(true);
-
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-replies', {
-        body: {
-          conversationContext: validMessages,
-          inputText: validMessages[validMessages.length - 1].text,
-        },
-      });
-
-      if (error) throw error;
-
-      if (data?.replies) {
-        setReplies(data.replies.map((r: Reply, i: number) => ({
-          ...r,
-          color: i === 0 ? 'tone-funny' : i === 1 ? 'tone-bold' : 'tone-mature'
-        })));
-        toast.success("Replies generated!");
-        // Reload profile to update quota
-        if (user) loadProfile(user.id);
-      }
-    } catch (error: any) {
-      console.error("Error generating replies:", error);
-      if (error.message?.includes('429')) {
-        toast.error("Rate limit exceeded. Please try again later.");
-      } else if (error.message?.includes('quota')) {
-        toast.error("Daily quota exceeded. Upgrade for unlimited!");
-      } else {
-        toast.error("Failed to generate replies. Please try again.");
-      }
-    } finally {
-      setLoading(false);
+    if (data?.replies && Array.isArray(data.replies) && data.replies.length === 3) {
+      setReplies(data.replies.map((r: Reply, i: number) => ({
+        ...r,
+        color: i === 0 ? 'tone-funny' : i === 1 ? 'tone-bold' : 'tone-mature'
+      })));
+      toast.success("Replies generated! 🎉");
+      
+      // Reload profile to update quota
+      if (user) loadProfile(user.id);
+    } else {
+      throw new Error('Invalid response format from server');
     }
-  };
+  } catch (error: any) {
+    console.error("Error generating replies:", error);
+    
+    // User-friendly error messages
+    const errorMessage = error.message || 'Unknown error';
+    
+    if (errorMessage.includes('429') || errorMessage.includes('Rate limit')) {
+      toast.error("Too many requests. Please wait a moment and try again.");
+    } else if (errorMessage.includes('quota')) {
+      toast.error("Daily quota exceeded. Upgrade for unlimited!");
+    } else if (errorMessage.includes('Unauthorized') || errorMessage.includes('401')) {
+      toast.error("Session expired. Please sign in again.");
+      navigate('/auth');
+    } else if (errorMessage.includes('API key') || errorMessage.includes('not configured')) {
+      toast.error("Service configuration error. Please contact support.");
+    } else if (errorMessage.includes('Network') || errorMessage.includes('fetch')) {
+      toast.error("Network error. Please check your connection and try again.");
+    } else {
+      toast.error("Failed to generate replies. Please try again.");
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   const copyReply = (text: string) => {
     navigator.clipboard.writeText(text);
